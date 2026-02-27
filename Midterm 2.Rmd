@@ -1,0 +1,154 @@
+---
+title: "Midterm 2"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+### Data 
+
+For this midterm you need to use two datasets:
+
+"chinalanduse_MODIS_2012.nc" contains four layers of raster data representing land cover for China. The data were derived from MODIS satellite data for the year 2012. The layers give the fraction of each cell that has a specific land cover type: urban (layer 1), cropland (layer 2), grassland (layer 3) and forest (layer 4). 
+
+"ch_adm.*" with polygons for the provinces of China.
+
+
+Q1. Read in the land use data as a SpatRaster get the polygons as a SpatVector (2 points)
+
+
+```{r}
+library(terra)
+
+##reading in the land use data
+landuse <- rast("chinalanduse_MODIS_2012.nc")
+provinces <- vect("chn_adm.shp")
+
+
+```
+
+
+Q2a. Crop the land use SpatRaster to the same extent as the SpatVector of Chinese provinces (1 point), and set all raster cells outside of China to `NA`
+
+```{r}
+## Cropping raster to same extent as provinces
+landuse_crop <- crop(landuse, provinces)
+
+## masking cells to outside of China
+landuse_mask <- mask(landuse_crop, provinces)
+```
+
+Q2b. Rename the layers in the SpatRaster so they provide information about what data is in each of the 4 layers (2 points)
+
+```{r}
+## renaming each layer to make sure they correlate to what data they provide
+names(landuse_mask) <- c("Urban", "Cropland", "Grassland", "Forest")
+```
+
+Q3. Make a figure showing each SpatRaster layer on one of the panels and overlay the polygons of the Chinese provinces. Title each panel with the type of land use it shows. (4 points)
+
+```{r}
+## creating the panel layouts (2x2)
+par(mfrow = c(2, 2))
+
+## Run the loop (plotting + boundaries) 4 times 
+for (i in 1:4) {
+  plot(landuse_mask[[i]],
+       main = names(landuse_mask)[i])
+  plot(provinces, add = TRUE)
+}
+
+## resetting the layout to single plotting again 
+par(mfrow = c(1,1))
+
+```
+
+Q4a. Use `terra::extract` to find, for each province, the fraction of land in these four classes. [For this question you can assume all the cells have the same size] (3 points)
+
+```{r}
+
+extracted <- extract(landuse_mask, provinces, fun = mean, na.rm = TRUE)
+
+## converting to a data frame
+extracted_df <- as.data.frame(extracted)
+```
+
+Q4b. Describe the potential problem with the area assumption made in 4a. How might it affect the calculation in that step? What could we do if we didn't want to make that assumption? (You don't have to do it, just describe in theory) (2 points)
+
+**Answer: The potential problem with the area assumption made in 4a is that raster cells in latitude-longitude coordinates do not have equal area. This is evident with cells near Northern China where they are smaller than the cells near southern China. Because of that, we might assume that northern China has a larger land cover factions. However, if we didn't want to make this assumption, we could potentially weight each cell by its true surface area before calculating fractions.**
+
+
+Q4c. Sum up the fractions in the four land cover classes for each province and plot these as a histogram. (2 points) 
+
+```{r}
+## sum of land cover fractions
+extracted_df$total_fraction <- rowSums(extracted_df[,2:5], na.rm = TRUE)
+
+## plotting a histogram
+hist(extracted_df$total_fraction,
+     main = "Sum of Land Cover Fractions by Province",
+     xlab = "Total Fraction")
+```
+
+Q5. Add a new variable called "other" to the data.frame created with terra::extract. This variable should represent the fraction of all other land cover classes. Assign it the appropriate values. (2 points)
+
+```{r}
+## adding variable "other" 
+extracted_df$Other <- 1 - extracted_df$total_fraction
+```
+
+
+Q6. Make barplots showing the breakdown of urban, cropland, grassland, forest, and other for each province. The barplots should be "stacked" (a single bar for each province, showing land cover with a color) and "horizontal" (province names on the vertical axis).  
+
+Q6a) Use graphics::barplot, make sure to include a legend.  (4 points)
+
+```{r}
+## provinence names
+extracted_df$Province <- provinces$PROV_NAME
+
+## creating matrix for plotting
+land_matrix <- t(as.matrix(extracted_df[, c("Urban","Cropland","Grassland","Forest","Other")]))
+
+colnames(land_matrix) <- extracted_df$Province
+
+## plotting
+barplot(land_matrix,
+        horiz = TRUE,
+        col = c("red","gold","lightgreen","darkgreen","gray"),
+        legend.text = rownames(land_matrix),
+        names.arg = colnames(land_matrix),
+        las = 1,
+        cex.names = 0.7)
+
+```
+
+Q6b) Use ggplot. (4 points) 
+
+```{r}
+## attatching packages
+library(ggplot2)
+library(tidyr)
+
+## Adding province names
+extracted_df$Province <- provinces$NAME_1
+
+## long format conversion
+long_df <- pivot_longer(extracted_df,
+                        cols = c("Urban","Cropland","Grassland","Forest","Other"),
+                        names_to = "LandType",
+                        values_to = "Fraction")
+
+## plotting
+ggplot(long_df, aes(x = Fraction,
+                    y = Province,
+                    fill = LandType)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(title = "Land Cover by Province",
+       x = "Fraction",
+       y = "Province")
+```
+
+
+Q7. Upload your R markdown file, and your knitted output to Canvas (2 points)
+
